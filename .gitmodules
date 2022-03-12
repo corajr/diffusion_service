@@ -1,0 +1,3 @@
+[submodule "diffusion_gen"]
+	path = diffusion_gen
+	url = https://github.com/corajr/diffusion_gen

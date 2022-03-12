@@ -1,0 +1,78 @@
+services:
+  nginx-proxy:
+    build: nginx
+    restart: always
+    volumes:
+      - ./nginx/default.conf:/tmp/default.conf
+      - ./diffusion_gen:/usr/share/nginx/html
+    environment: 
+      - FLASK_SERVER_ADDR=flask-app:8000
+    ports:
+      - "80:80"
+    depends_on:
+      - flask-app
+    healthcheck:
+      test: ["CMD-SHELL", "curl --silent --fail localhost:80/health-check || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 3
+    command: /app/start.sh
+  celery-worker:
+    build:
+      context: ./diffusion_gen
+      dockerfile: Dockerfile.gpu
+    volumes:
+      - ./diffusion_gen:/app
+    environment: 
+      - CONDA_PREFIX=/opt/conda
+      - CELERY_BROKER_URL=redis://redis:6379
+      - CELERY_RESULT_BACKEND=redis://redis:6379
+    depends_on:
+      - redis
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    command: /app/start_worker.sh
+  redis:
+    image: "redis:alpine"
+    ports:
+      - "6379:6379"
+  flask-app:
+    build: diffusion_gen
+    restart: always
+    depends_on:
+      - redis
+    ports: 
+      - '8000:8000'
+    volumes:
+      - ./diffusion_gen:/home/app/data
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379
+      - CELERY_RESULT_BACKEND=redis://redis:6379
+      - DATA_ROOT=/home/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl --silent --fail localhost:8000/flask-health-check || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 3
+    command: gunicorn -w 3 -t 60 -b 0.0.0.0:8000 app:app
+  flower:
+    build:
+      context: ./diffusion_gen
+      dockerfile: Dockerfile.flower
+    depends_on:
+      - redis
+      - celery-worker
+    command: celery -A app.celery flower
+    volumes:
+      - ./diffusion_gen:/app
+    working_dir: /app
+    ports:
+      - 5555:5555
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379
+      - CELERY_RESULT_BACKEND=redis://redis:6379
