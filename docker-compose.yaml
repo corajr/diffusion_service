@@ -23,9 +23,11 @@ services:
       dockerfile: Dockerfile.gpu
     volumes:
       - ./diffusion_gen/out_diffusion/images_out:/app/out_diffusion/images_out
+      - models:/app/out_diffusion/models
     environment: 
       - CELERY_BROKER_URL=redis://redis:6379
       - CELERY_RESULT_BACKEND=redis://redis:6379
+      - CUDA_VISIBLE_DEVICES
     depends_on:
       - redis
     deploy:
@@ -71,3 +73,6 @@ services:
     environment:
       - CELERY_BROKER_URL=redis://redis:6379
       - CELERY_RESULT_BACKEND=redis://redis:6379
+
+volumes:
+  models:
